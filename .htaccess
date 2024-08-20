@@ -1,0 +1,3 @@
+RewriteEngine on
+RewriteRule (.*) http://0.0.0.0:1337/$1 [P,L]
+DirectoryIndex disabled
