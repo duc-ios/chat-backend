@@ -1,4 +1,4 @@
-const { getSocket, socketUsers } = require("../../../../../socket");
+const { getSocket, getSocketUsers } = require("../../../../../socket");
 
 module.exports = {
   async afterCreate(event) {
@@ -9,7 +9,7 @@ module.exports = {
       result.id,
       {
         populate: {
-          sender: { fields: [] },
+          sender: { fields: ["id", "username"] },
           conversation: { fields: ["refId"], populate: ["participants"] },
         },
       }
@@ -21,10 +21,13 @@ module.exports = {
     if (io && message) {
       // Emit the 'message:create' event after a message is created
 
-      const participants = message.conversation.participants.map(
+      const conversation = message.conversation;
+      const participants = conversation.participants.map(
         (participant) => participant.id
       );
       delete message.conversation.participants;
+
+      const socketUsers = getSocketUsers();
 
       strapi.log.debug(`[message:create] message: ${JSON.stringify(message)}`);
       strapi.log.debug(

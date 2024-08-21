@@ -84,4 +84,6 @@ const initSocket = (strapi) => {
 
 const getSocket = () => io;
 
-module.exports = { initSocket, getSocket, socketUsers };
+const getSocketUsers = () => socketUsers;
+
+module.exports = { initSocket, getSocket, getSocketUsers };

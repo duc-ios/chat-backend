@@ -62,7 +62,67 @@ module.exports = createCoreController(
         }
       }
 
-      return await super.find(ctx);
+      const { query: query } = ctx.request;
+      const { filters: queryFilters } = query;
+
+      if (queryFilters) {
+        // @ts-ignore
+        queryFilters.participants = {
+          $in: sender.id,
+        };
+      } else {
+        ctx.request.query.filters = {
+          // @ts-ignore
+          participants: {
+            $in: sender.id,
+          },
+        };
+      }
+      const populate = ctx.request.query.populate;
+      if (populate) {
+        // @ts-ignore
+        populate.participants = {
+          // @ts-ignore
+          populate: ["avatar"],
+        // @ts-ignore
+        };
+      } else {
+        ctx.request.query.populate = {
+          // @ts-ignore
+          participants: {
+            populate: ["avatar"],
+          },
+        };
+      }
+
+      var response = await super.find(ctx);
+      const data = response.data;
+      if (data) {
+        for (let idx in data) {
+          var conversation = data[idx];
+          const messages = await strapi.entityService.findMany(
+            "api::message.message",
+            {
+              limit: 1,
+              filters: { conversation: conversation.id },
+              sort: ["createdAt:desc"],
+            }
+          );
+          if (messages.length > 0) {
+            conversation.attributes.lastMessage = messages[0];
+          }
+          const participants = conversation.attributes.participants;
+          if (participants) {
+            const participantsData = participants.data;
+            for (let idx in participantsData) {
+              const participant = participantsData[idx];
+              participant.attributes.avatar =
+                participant.attributes.avatar.data.attributes.formats.thumbnail.url;
+            }
+          }
+        }
+      }
+      return response;
     },
   })
 );
