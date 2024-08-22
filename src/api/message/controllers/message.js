@@ -1,6 +1,8 @@
 // @ts-nocheck
 "use strict";
 
+const { getSocket, getSocketUsers, sendEvent } = require("../../../../socket");
+
 /**
  * message controller
  */
@@ -13,7 +15,7 @@ module.exports = createCoreController("api::message.message", ({ strapi }) => ({
     const { content, conversation: conversationRefId } = ctx.request.body.data;
     const trimmedContent = content.trim();
 
-    if (!trimmedContent || !trimmedContent.length === 0 || !conversationRefId) {
+    if (!trimmedContent || trimmedContent.length === 0 || !conversationRefId) {
       return ctx.badRequest("Content and conversation refId are required.");
     }
 
@@ -47,7 +49,41 @@ module.exports = createCoreController("api::message.message", ({ strapi }) => ({
     ctx.request.body.data.conversation = conversation.id;
     ctx.request.body.data.content = trimmedContent;
 
-    return await super.create(ctx);
+    const response = await super.create(ctx);
+    await sendEvent("message:create", response.data.id);
+    return response;
+  },
+
+  async update(ctx) {
+    const userId = ctx.state.user.id; // Get the authenticated user's ID
+    const { id } = ctx.request.params;
+    const { content } = ctx.request.body.data;
+    const trimmedContent = content.trim();
+
+    if (!trimmedContent || trimmedContent.length === 0) {
+      return ctx.badRequest("Content is required.");
+    }
+
+    // Find the message and check if sender is the current user
+    const message = await strapi.entityService.findOne(
+      "api::message.message",
+      id,
+      {
+        populate: {
+          sender: { fields: ["id", "username"] },
+          conversation: { fields: ["refId"], populate: ["participants"] },
+        },
+      }
+    );
+
+    if (!message || message.sender.id != userId) {
+      return ctx.forbidden("You are not allowed to update this message.");
+    }
+
+    ctx.request.body.data.content = trimmedContent;
+    const response = await super.update(ctx);
+    await sendEvent("message:update", response.data.id);
+    return response;
   },
 
   async find(ctx) {
@@ -115,7 +151,7 @@ module.exports = createCoreController("api::message.message", ({ strapi }) => ({
     );
 
     if (!isParticipant) {
-      return ctx.unauthorized("You are not allowed to view this message.");
+      return ctx.forbidden("You are not allowed to view this message.");
     }
 
     return message;

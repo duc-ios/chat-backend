@@ -4,7 +4,11 @@ let io;
 
 var socketUsers = [];
 
-function addUser(newUser) {
+const getSocket = () => io;
+
+const getSocketUsers = () => socketUsers;
+
+const addUser = (newUser) => {
   socketUsers = socketUsers.filter(
     (socketUser) => socketUser.id !== newUser.id
   );
@@ -12,14 +16,63 @@ function addUser(newUser) {
   for (let idx in socketUsers) {
     io.to(socketUsers[idx].socketId).emit("users", socketUsers);
   }
-}
+};
 
-function removeUser(socketId) {
+const removeUser = (socketId) => {
   socketUsers = socketUsers.filter((user) => user.socketId !== socketId);
   for (let idx in socketUsers) {
     io.to(socketUsers[idx].socketId).emit("users", socketUsers);
   }
-}
+};
+
+const sendEvent = async (event, messageId) => {
+  const message = await strapi.entityService.findOne(
+    "api::message.message",
+    messageId,
+    {
+      populate: {
+        sender: { fields: ["id", "username"] },
+        conversation: { fields: ["refId"], populate: ["participants"] },
+      },
+    }
+  );
+
+  if (!message) {
+    return;
+  }
+
+  const conversation = message.conversation;
+  const participants = conversation.participants.map(
+    (participant) => participant.id
+  );
+  delete message.conversation.participants;
+
+  const socketUsers = getSocketUsers();
+
+  strapi.log.debug(`[${event}] message: ${JSON.stringify(message)}`);
+  strapi.log.debug(`[${event}] participants: ${JSON.stringify(participants)}`);
+  strapi.log.debug(
+    `[${event}] socketUsers: ${JSON.stringify(
+      socketUsers.map((user) => {
+        return { id: user.id, username: user.username };
+      })
+    )}`
+  );
+  const filteredSocketUser = socketUsers.filter((socketUser) =>
+    participants.includes(socketUser.id)
+  );
+  for (let idx in filteredSocketUser) {
+    const socketUser = filteredSocketUser[idx];
+    // Include the created message data
+    io.to(socketUser.socketId).emit(event, message);
+    strapi.log.debug(
+      `[${event}] sent to socketUser: ${JSON.stringify({
+        id: socketUser.id,
+        username: socketUser.username,
+      })}`
+    );
+  }
+};
 
 const initSocket = (strapi) => {
   strapi.log.debug("[io] initSocket");
@@ -82,8 +135,4 @@ const initSocket = (strapi) => {
   });
 };
 
-const getSocket = () => io;
-
-const getSocketUsers = () => socketUsers;
-
-module.exports = { initSocket, getSocket, getSocketUsers };
+module.exports = { initSocket, getSocket, getSocketUsers, sendEvent };
